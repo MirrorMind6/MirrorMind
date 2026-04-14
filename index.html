@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>MirrorMind</title>
+
+  <!-- PWA / iOS home screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="MirrorMind" />
+  <meta name="theme-color" content="#F2F2F7" />
+  <link rel="manifest" href="manifest.json" />
+
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div id="app"></div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/diff.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
