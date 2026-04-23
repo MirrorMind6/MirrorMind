@@ -125,23 +125,57 @@ def _analyse_window(event: EventWindow) -> None:
         spread = float(cx.std() ** 2 + cy.std() ** 2) ** 0.5
         event.hotspot_stable = spread < 5.0
 
-    # Narrative notes
-    direction = "rising" if event.temp_slope > 0.01 else (
-        "falling" if event.temp_slope < -0.01 else "stable"
-    )
-    event.notes.append(
-        f"PIR fired {event.pir_lead_s:.1f}s before thermal confirmation"
-    )
-    event.notes.append(
-        f"Temperature {direction} at {event.temp_slope:+.3f}°C/s  "
-        f"(peak {event.peak_temp:.1f}°C, delta +{event.temp_delta:.1f}°C above ambient)"
-    )
-    if event.max_occupancy > 1:
-        event.notes.append(f"Up to {event.max_occupancy} occupants detected")
-    if event.hotspot_stable:
-        event.notes.append("Heat source held a fixed position (stationary person)")
+    # Human-readable narrative
+    event.notes.append(_describe_arrival(event))
+    event.notes.append(_describe_behaviour(event))
+    occupancy_note = _describe_occupancy(event)
+    if occupancy_note:
+        event.notes.append(occupancy_note)
+
+
+def _describe_arrival(event: EventWindow) -> str:
+    """First-person arrival observation."""
+    if event.temp_slope > 0.05:
+        return "I picked up someone entering the space — their heat signature built up as they came in."
+    elif event.temp_slope < -0.05:
+        return "I caught someone on their way out — their heat signature was already fading when I started recording."
     else:
-        event.notes.append("Heat source moved during the window (person in motion)")
+        return "I detected someone entering the area."
+
+
+def _describe_behaviour(event: EventWindow) -> str:
+    """First-person behaviour + intent inference."""
+    duration = int(event.duration_s)
+    if event.hotspot_stable and event.temp_slope >= -0.01:
+        return (
+            f"They stopped and held their position for the full {duration} seconds. "
+            f"That kind of stillness usually means they were focused on something — "
+            f"working, waiting, or paying attention to something in that spot."
+        )
+    elif event.hotspot_stable and event.temp_slope < -0.01:
+        return (
+            f"They stayed in one place but their presence gradually faded over {duration} seconds. "
+            f"They were likely wrapping something up before leaving."
+        )
+    elif not event.hotspot_stable and event.temp_slope > 0.01:
+        return (
+            f"They kept moving throughout the {duration} seconds and the space kept warming up. "
+            f"Looks like they were actively doing something — setting up, searching, or working."
+        )
+    else:
+        return (
+            f"They moved around during the {duration}-second window. "
+            f"Probably just passing through or getting settled."
+        )
+
+
+def _describe_occupancy(event: EventWindow) -> str:
+    """First-person occupancy note, or empty string if just one person."""
+    if event.max_occupancy >= 3:
+        return "I counted what looked like three or more people — this was a group, not an individual."
+    elif event.max_occupancy == 2:
+        return "I picked up a second heat source too, so there were likely two people here at the same time."
+    return ""
 
 
 def summarise_events(events: list[EventWindow]) -> pd.DataFrame:

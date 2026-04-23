@@ -15,37 +15,15 @@ from src.datasets import merge_datasets
 from src.dual_trigger import find_dual_triggers, summarise_events
 
 
-def _bar(value: float, width: int = 20, vmin: float = 0.0, vmax: float = 1.0) -> str:
-    filled = int(round((value - vmin) / (vmax - vmin + 1e-9) * width))
-    filled = max(0, min(width, filled))
-    return "█" * filled + "░" * (width - filled)
-
-
 def print_event(event, idx: int, total: int) -> None:
     e = event
-    print(f"\n{'─'*60}")
-    print(f"  Event {idx + 1}/{total}  │  t = {e.trigger_time:.0f}s")
-    print(f"{'─'*60}")
-    print(f"  PIR lead time  : {e.pir_lead_s:.1f}s before thermal confirmed")
-    print(f"  Duration       : {e.duration_s:.0f}s recorded")
-    print(f"  Peak temp      : {e.peak_temp:.1f}°C  (+{e.temp_delta:.1f}°C above ambient)")
-    print(f"  Temp trend     : {e.temp_slope:+.3f}°C/s  "
-          f"{'↑ heating' if e.temp_slope > 0.01 else ('↓ cooling' if e.temp_slope < -0.01 else '→ stable')}")
-    print(f"  Max occupancy  : {e.max_occupancy} person(s)")
-    print(f"  Hotspot motion : {'stationary' if e.hotspot_stable else 'moving'}")
+    # Human-readable timestamp
+    mins, secs = divmod(int(e.trigger_time), 60)
+    time_label = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
 
-    # Mini temperature timeline bar chart
-    temps = e.rows["grid_peak"].values
-    t_min, t_max = float(temps.min()), float(temps.max())
-    print(f"\n  Temperature over 60s  ({t_min:.1f}°C → {t_max:.1f}°C)")
-    step = max(1, len(temps) // 20)
-    for i in range(0, len(temps), step):
-        bar = _bar(temps[i], width=24, vmin=t_min - 1, vmax=t_max + 1)
-        print(f"    t+{i:3.0f}s  {bar}  {temps[i]:.1f}°C")
-
-    print(f"\n  Summary notes:")
-    for note in e.notes:
-        print(f"    → {note}")
+    print(f"\n  [{idx + 1}/{total}]  Detected at {time_label} into the session")
+    print(f"  {'─' * 50}")
+    print(f"  " + "  ".join(e.notes))
 
 
 def print_calibration_insights(events) -> None:
