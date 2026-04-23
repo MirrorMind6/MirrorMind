@@ -1,0 +1,9 @@
+# Base pipeline (same as requirements.txt)
+-r requirements.txt
+
+# Raspberry Pi hardware drivers
+# Install on the Pi after enabling I2C:  sudo raspi-config → Interface → I2C
+adafruit-circuitpython-mlx90640>=1.2
+adafruit-circuitpython-vl53l0x>=3.6
+adafruit-circuitpython-bme280>=2.6
+RPi.GPIO>=0.7
