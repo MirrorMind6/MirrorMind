@@ -1,0 +1,51 @@
+# Thermal Monitor — runtime configuration
+# Edit this file to calibrate sensitivity without touching code.
+# runner.py and analyze.py read it on startup.
+
+# ── Hardware ──────────────────────────────────────────────────────────────────
+hardware:
+  use_mock: true          # false when running on real Pi hardware
+  thermal_fps: 4          # MLX90640 capture rate (1, 2, 4, 8, 16, 32)
+  pir_poll_hz: 10         # how often to check PIR in idle state
+
+# ── Event detection sensitivity ───────────────────────────────────────────────
+detection:
+  # Fusion score thresholds (0.0–1.0).
+  # Raise these to reduce false positives; lower to be more sensitive.
+  warn_threshold: 0.55
+  alert_threshold: 0.72
+
+  # Seconds of sensor data required to confirm an event is real (not noise).
+  # Raise if you get too many short false-positive triggers.
+  confirm_window_s: 3.0
+
+  # Minimum gap between events in seconds.
+  # Prevents a person standing still from generating continuous recordings.
+  cooldown_s: 5.0
+
+# ── Recording ─────────────────────────────────────────────────────────────────
+recording:
+  duration_s: 60.0        # length of each thermal clip
+
+  # Export PNG heatmap frames alongside the .npz clip (debug only — uses more disk).
+  save_png: false
+
+# ── Token quota (Claude API narrative generation) ─────────────────────────────
+quota:
+  enabled: true
+
+  # Hard daily cap on tokens sent to Claude.
+  # When reached, the narrative step is skipped but the structured
+  # summary is still saved. Reset automatically at midnight.
+  daily_token_limit: 10000   # ~$0.005/day max at Haiku pricing
+
+  # Per-call limits (safety net against unexpectedly large payloads).
+  max_input_tokens: 400
+  max_output_tokens: 150
+
+# ── Data retention ────────────────────────────────────────────────────────────
+storage:
+  data_dir: data
+  clips_dir: data/clips
+  events_log: data/events.jsonl
+  token_usage_file: data/token_usage.json

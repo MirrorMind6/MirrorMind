@@ -22,6 +22,7 @@ import numpy as np
 from .extract import find_hotspots, frame_stats
 from .extrapolate import temperature_trend
 from .ingest import ThermalFrame
+from .config import CFG
 
 
 # ── Summary dataclass ─────────────────────────────────────────────────────────
@@ -152,6 +153,45 @@ def _nearest_track(
     return best_id if best_dist < threshold else None
 
 
+# ── Token quota guard ────────────────────────────────────────────────────────
+
+def _quota_path() -> Path:
+    return Path(CFG["storage"]["token_usage_file"])
+
+
+def _load_usage() -> dict:
+    p = _quota_path()
+    today = time.strftime("%Y-%m-%d")
+    if p.exists():
+        try:
+            data = json.loads(p.read_text())
+            if data.get("date") == today:
+                return data
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return {"date": today, "tokens_used": 0, "calls": 0}
+
+
+def _save_usage(usage: dict) -> None:
+    p = _quota_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(usage))
+
+
+def quota_status() -> dict:
+    """Return today's token usage and remaining allowance."""
+    usage = _load_usage()
+    limit = CFG["quota"]["daily_token_limit"]
+    return {
+        "date": usage["date"],
+        "tokens_used": usage["tokens_used"],
+        "tokens_remaining": max(0, limit - usage["tokens_used"]),
+        "calls": usage["calls"],
+        "limit": limit,
+        "enabled": CFG["quota"]["enabled"],
+    }
+
+
 # ── Claude narrative (optional) ───────────────────────────────────────────────
 
 _SYSTEM_PROMPT = (
@@ -166,38 +206,49 @@ _SYSTEM_PROMPT = (
 def add_narrative(summary: ClipSummary) -> ClipSummary:
     """
     Call the Claude API to add a natural-language narrative to the summary.
-    Requires ANTHROPIC_API_KEY in the environment. Safe to skip if unavailable.
+    Requires ANTHROPIC_API_KEY in the environment.
+    Respects the daily token quota in config.yml — skips gracefully if the
+    cap is reached or the key is missing.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         summary.narrative = "(narrative unavailable — set ANTHROPIC_API_KEY)"
         return summary
 
+    q = CFG["quota"]
+    if q["enabled"]:
+        usage = _load_usage()
+        if usage["tokens_used"] >= q["daily_token_limit"]:
+            summary.narrative = (
+                f"(narrative skipped — daily token limit of "
+                f"{q['daily_token_limit']:,} reached)"
+            )
+            return summary
+
     import urllib.request
 
+    content = json.dumps({
+        "duration_s":        summary.duration_s,
+        "ambient_temp":      summary.ambient_temp,
+        "peak_temp":         summary.peak_temp,
+        "mean_temp":         summary.mean_temp,
+        "temp_slope_c_per_s": summary.temp_slope,
+        "hotspots":          [asdict(h) for h in summary.hotspots],
+    })
+
     payload = {
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 200,
-        "system": _SYSTEM_PROMPT,
-        "messages": [{
-            "role": "user",
-            "content": json.dumps({
-                "duration_s": summary.duration_s,
-                "ambient_temp": summary.ambient_temp,
-                "peak_temp": summary.peak_temp,
-                "mean_temp": summary.mean_temp,
-                "temp_slope_c_per_s": summary.temp_slope,
-                "hotspots": [asdict(h) for h in summary.hotspots],
-            }),
-        }],
+        "model":      "claude-haiku-4-5-20251001",
+        "max_tokens": q["max_output_tokens"],
+        "system":     _SYSTEM_PROMPT,
+        "messages":   [{"role": "user", "content": content}],
     }
 
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
         data=json.dumps(payload).encode(),
         headers={
-            "Content-Type":    "application/json",
-            "x-api-key":       api_key,
+            "Content-Type":      "application/json",
+            "x-api-key":         api_key,
             "anthropic-version": "2023-06-01",
         },
         method="POST",
@@ -205,7 +256,16 @@ def add_narrative(summary: ClipSummary) -> ClipSummary:
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             body = json.loads(resp.read())
-            summary.narrative = body["content"][0]["text"].strip()
+        summary.narrative = body["content"][0]["text"].strip()
+
+        # Track usage
+        if q["enabled"]:
+            usage = _load_usage()
+            used = body.get("usage", {})
+            usage["tokens_used"] += used.get("input_tokens", 0) + used.get("output_tokens", 0)
+            usage["calls"] += 1
+            _save_usage(usage)
+
     except Exception as exc:
         summary.narrative = f"(narrative error: {exc})"
 

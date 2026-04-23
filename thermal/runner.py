@@ -42,9 +42,10 @@ from src.fusion import FusionBuffer, Decision
 from src.extract import find_hotspots
 from src.ingest import ThermalFrame
 from src.analyze import analyze_clip, add_narrative, ClipSummary
+from src.config import CFG
 
-# ── Hardware selection ────────────────────────────────────────────────────────
-USE_MOCK = True   # ← flip to False when running on real Pi hardware
+# ── Hardware selection (driven by config.yml) ─────────────────────────────────
+USE_MOCK = CFG["hardware"]["use_mock"]
 
 if USE_MOCK:
     from src.hardware import MockPIR as PIR
@@ -57,16 +58,18 @@ else:
     from src.hardware import VL53L0XDriver as Proximity  # type: ignore[assignment]
     from src.hardware import BME280Driver as Humidity    # type: ignore[assignment]
 
-# ── Tunable parameters ────────────────────────────────────────────────────────
-PIR_POLL_HZ      = 10      # how often to check PIR in IDLE (per second)
-THERMAL_FPS      = 4       # thermal frames per second during capture
-CONFIRM_WINDOW   = 3.0     # seconds of fusion to confirm an event isn't noise
-RECORD_DURATION  = 60.0    # seconds of thermal clip to record per event
-COOLDOWN_SECS    = 5.0     # pause between events
+# ── Parameters loaded from config.yml ────────────────────────────────────────
+PIR_POLL_HZ      = CFG["hardware"]["pir_poll_hz"]
+THERMAL_FPS      = CFG["hardware"]["thermal_fps"]
+CONFIRM_WINDOW   = CFG["detection"]["confirm_window_s"]
+RECORD_DURATION  = CFG["recording"]["duration_s"]
+COOLDOWN_SECS    = CFG["detection"]["cooldown_s"]
+WARN_THRESHOLD   = CFG["detection"]["warn_threshold"]
+ALERT_THRESHOLD  = CFG["detection"]["alert_threshold"]
 
-DATA_DIR         = Path("data")
-CLIPS_DIR        = DATA_DIR / "clips"
-EVENTS_LOG       = DATA_DIR / "events.jsonl"
+DATA_DIR         = Path(CFG["storage"]["data_dir"])
+CLIPS_DIR        = Path(CFG["storage"]["clips_dir"])
+EVENTS_LOG       = Path(CFG["storage"]["events_log"])
 
 
 # ── State machine ─────────────────────────────────────────────────────────────
@@ -125,7 +128,7 @@ class ThermalRunner:
                 Proximity(sensor_id="proximity_0") as prox,
                 Humidity(sensor_id="humidity_0") as bme,
             ):
-                buf = FusionBuffer(window_size=20, thresholds=(0.55, 0.72))
+                buf = FusionBuffer(window_size=20, thresholds=(WARN_THRESHOLD, ALERT_THRESHOLD))
                 confirmed = self._confirm_loop(cam, prox, bme, buf)
 
                 if not confirmed:

@@ -78,10 +78,21 @@ def format_event(event: dict, full: bool = False) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Query thermal event log")
-    parser.add_argument("--date",  help="Filter by date prefix e.g. 2025-04-06 or 2025-04")
-    parser.add_argument("--last",  type=int, help="Show N most recent events")
-    parser.add_argument("--full",  action="store_true", help="Show hotspot detail")
+    parser.add_argument("--date",   help="Filter by date prefix e.g. 2025-04-06 or 2025-04")
+    parser.add_argument("--last",   type=int, help="Show N most recent events")
+    parser.add_argument("--full",   action="store_true", help="Show hotspot detail")
+    parser.add_argument("--quota",  action="store_true", help="Show today's token usage")
     args = parser.parse_args()
+
+    if args.quota:
+        from src.analyze import quota_status
+        s = quota_status()
+        print(f"\nToken quota  [{s['date']}]")
+        print(f"  Used:      {s['tokens_used']:,} / {s['limit']:,}")
+        print(f"  Remaining: {s['tokens_remaining']:,}")
+        print(f"  API calls: {s['calls']}")
+        print(f"  Enabled:   {s['enabled']}\n")
+        return
 
     events = load_events()
     if not events:
